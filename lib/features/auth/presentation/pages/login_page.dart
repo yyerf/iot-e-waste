@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../core/services/firebase_service.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -70,15 +73,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         Text(
           'Welcome Back',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: 8),
         Text(
           'Sign in to continue monitoring',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: Colors.grey[600],
-          ),
+                color: Colors.grey[600],
+              ),
         ),
       ],
     );
@@ -210,7 +213,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         const Text('Don\'t have an account? '),
         TextButton(
           onPressed: () {
-            Navigator.pushNamed(context, '/register');
+            context.go('/register');
           },
           child: const Text('Sign Up'),
         ),
@@ -226,11 +229,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
 
     try {
-      // TODO: Implement actual login logic
-      await Future.delayed(const Duration(seconds: 2));
-      
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      // Use mock auth service for now (accepts any email/password)
+      final auth = ref.read(firebaseServiceProvider);
+      await auth.signInWithEmailAndPassword(email: email, password: password);
+
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/dashboard');
+        context.go('/dashboard');
       }
     } catch (e) {
       if (mounted) {

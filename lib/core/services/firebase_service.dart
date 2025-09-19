@@ -1,8 +1,6 @@
 // import 'package:cloud_firestore/cloud_firestore.dart';
 // import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../config/app_config.dart';
 import '../models/sensor_data.dart';
 import '../models/car_model.dart';
 
@@ -15,7 +13,8 @@ final userCarsProvider = StreamProvider<List<Car>>((ref) {
   return firebaseService.getUserCars();
 });
 
-final sensorDataHistoryProvider = StreamProvider.family<List<SensorData>, String>((ref, carId) {
+final sensorDataHistoryProvider =
+    StreamProvider.family<List<SensorData>, String>((ref, carId) {
   final firebaseService = ref.watch(firebaseServiceProvider);
   return firebaseService.getSensorDataHistory(carId);
 });
@@ -28,7 +27,7 @@ class FirebaseService {
   // Authentication (mock implementation for now)
   // User? get currentUser => _auth.currentUser;
   String? get currentUser => null; // Mock user
-  
+
   // Stream<User?> get authStateChanges => _auth.authStateChanges();
   Stream<String?> get authStateChanges => Stream.value(null);
 
@@ -38,7 +37,8 @@ class FirebaseService {
   }) async {
     try {
       // TODO: Implement actual Firebase authentication
-      await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
+      await Future.delayed(
+          const Duration(seconds: 1)); // Simulate network delay
       return 'mock_user_id';
     } catch (e) {
       print('Sign in error: $e');
@@ -52,7 +52,8 @@ class FirebaseService {
   }) async {
     try {
       // TODO: Implement actual Firebase authentication
-      await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
+      await Future.delayed(
+          const Duration(seconds: 1)); // Simulate network delay
       return 'mock_user_id';
     } catch (e) {
       print('Registration error: $e');
@@ -100,7 +101,7 @@ class FirebaseService {
         deviceId: 'esp32_002',
       ),
     ];
-    
+
     return Stream.value(mockCars);
   }
 
@@ -123,7 +124,8 @@ class FirebaseService {
     print('Mock: Batch sensor data saved - ${dataList.length} items');
   }
 
-  Stream<List<SensorData>> getSensorDataHistory(String carId, {
+  Stream<List<SensorData>> getSensorDataHistory(
+    String carId, {
     int limitCount = 100,
     DateTime? startDate,
     DateTime? endDate,
@@ -134,7 +136,12 @@ class FirebaseService {
       return SensorData(
         id: 'sensor_$index',
         carId: carId,
-        sensorType: ['voltage', 'temperature', 'battery', 'alternator'][index % 4],
+        sensorType: [
+          'voltage',
+          'temperature',
+          'battery',
+          'alternator'
+        ][index % 4],
         value: 12.0 + (index % 10) * 0.5,
         unit: ['V', '°C', '%', 'A'][index % 4],
         timestamp: now.subtract(Duration(minutes: index * 5)),
@@ -144,10 +151,11 @@ class FirebaseService {
     return Stream.value(mockData);
   }
 
-  Future<List<SensorData>> getLatestSensorData(String carId, String sensorType) async {
+  Future<List<SensorData>> getLatestSensorData(
+      String carId, String sensorType) async {
     // TODO: Implement actual Firestore query
     await Future.delayed(const Duration(milliseconds: 300));
-    
+
     return [
       SensorData(
         id: 'latest_$sensorType',
@@ -191,15 +199,16 @@ class FirebaseService {
         issues: ['Voltage fluctuation detected'],
       ),
     ];
-    
+
     return Stream.value(mockElectronics);
   }
 
   // Analytics (mock implementation)
-  Future<Map<String, double>> getAverageValues(String carId, DateTime startDate, DateTime endDate) async {
+  Future<Map<String, double>> getAverageValues(
+      String carId, DateTime startDate, DateTime endDate) async {
     // TODO: Implement actual analytics
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     return {
       'voltage': 12.4,
       'temperature': 68.5,

@@ -37,10 +37,11 @@ dependencies:
   http: ^1.1.0
   web_socket_channel: ^2.4.0
   
-  # Maps & Location
-  google_maps_flutter: ^2.5.0
+  # Maps & Location (OpenStreetMap via flutter_map for prototyping)
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
   geolocator: ^10.1.0
-  geocoding: ^2.1.1
+  # geocoding: ^2.1.1
   
   # Charts & Data Visualization
   fl_chart: ^0.64.0
@@ -53,19 +54,21 @@ dependencies:
   sqflite: ^2.3.0
   
   # Utilities
+  collection: ^1.17.2
   json_annotation: ^4.8.1
   dio: ^5.3.2
   connectivity_plus: ^5.0.1
   device_info_plus: ^9.1.0
   permission_handler: ^11.0.1
   package_info_plus: ^4.2.0
+  url_launcher: ^6.3.0
   
   # Date & Time
   intl: ^0.18.1
   timeago: ^3.5.0
   
   # Notifications
-  flutter_local_notifications: ^16.1.0
+  flutter_local_notifications: ^19.4.1
   
   # Future Social Auth (commented out for now)
   # google_sign_in: ^6.1.5
@@ -89,3 +92,6 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/animations/
+
+dependency_overrides:
+  web: 0.5.1

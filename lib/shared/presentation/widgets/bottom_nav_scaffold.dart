@@ -38,10 +38,6 @@ class BottomNavScaffold extends StatelessWidget {
             icon: Icon(Icons.map),
             label: 'E-Waste',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
         ],
       ),
     );
@@ -57,8 +53,6 @@ class BottomNavScaffold extends StatelessWidget {
         return 2;
       case '/maps':
         return 3;
-      case '/profile':
-        return 4;
       default:
         return 0;
     }
@@ -77,9 +71,6 @@ class BottomNavScaffold extends StatelessWidget {
         break;
       case 3:
         context.go('/maps');
-        break;
-      case 4:
-        context.go('/profile');
         break;
     }
   }

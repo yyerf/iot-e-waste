@@ -1,39 +1,50 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+// no dart:io here to stay web-safe
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
+import 'mqtt_client_factory.dart';
 import '../models/sensor_data.dart';
 
 final mqttServiceProvider = Provider<MqttService>((ref) {
-  return MqttService();
+  final service = MqttService();
+  ref.onDispose(service.dispose);
+  return service;
 });
 
-final sensorDataStreamProvider = StreamProvider.family<SensorData, String>((ref, carId) {
+final sensorDataStreamProvider =
+    StreamProvider.family<SensorData, String>((ref, carId) {
   final mqttService = ref.watch(mqttServiceProvider);
   return mqttService.getSensorDataStream(carId);
 });
 
+final mqttConnectionStateProvider = StreamProvider<MqttConnectionState>((ref) {
+  final mqttService = ref.watch(mqttServiceProvider);
+  return mqttService.connectionStateStream;
+});
+
 class MqttService {
-  late MqttServerClient _client;
+  late MqttClient
+      _client; // Use platform-specific factory instead of direct imports
   final Map<String, StreamController<SensorData>> _dataControllers = {};
   bool _isConnected = false;
+  final _connectionController =
+      StreamController<MqttConnectionState>.broadcast();
+
+  // Callback for battery health data processing
+  void Function(String carId, Map<String, dynamic> healthData)?
+      onBatteryHealthReceived;
 
   MqttService() {
     _initializeClient();
   }
 
   void _initializeClient() {
-    _client = MqttServerClient.withPort(
-      AppConfig.mqttBrokerUrl,
-      AppConfig.mqttClientId,
-      AppConfig.mqttPort,
-    );
+    _client = createMqttClient();
 
-    _client.logging(on: true);
+    _client.logging(on: false);
     _client.keepAlivePeriod = 20;
     _client.onDisconnected = _onDisconnected;
     _client.onConnected = _onConnected;
@@ -51,7 +62,11 @@ class MqttService {
 
       _client.connectionMessage = connMessage;
 
-      await _client.connect();
+      if (AppConfig.mqttUsername != null && AppConfig.mqttPassword != null) {
+        await _client.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
+      } else {
+        await _client.connect();
+      }
       return _isConnected;
     } catch (e) {
       print('MQTT Connection failed: $e');
@@ -68,11 +83,13 @@ class MqttService {
   void _onConnected() {
     print('MQTT Connected');
     _isConnected = true;
+    _connectionController.add(MqttConnectionState.connected);
   }
 
   void _onDisconnected() {
     print('MQTT Disconnected');
     _isConnected = false;
+    _connectionController.add(MqttConnectionState.disconnected);
   }
 
   void _onSubscribed(String topic) {
@@ -89,6 +106,7 @@ class MqttService {
       AppConfig.voltageTopicPattern.replaceAll('{carId}', carId),
       AppConfig.temperatureTopicPattern.replaceAll('{carId}', carId),
       AppConfig.batteryTopicPattern.replaceAll('{carId}', carId),
+      AppConfig.batteryHealthTopicPattern.replaceAll('{carId}', carId),
       AppConfig.alternatorTopicPattern.replaceAll('{carId}', carId),
     ];
 
@@ -110,13 +128,46 @@ class MqttService {
   void _handleIncomingMessage(String topic, String payload, String carId) {
     try {
       final data = json.decode(payload) as Map<String, dynamic>;
-      
+
       // Determine sensor type based on topic
       String sensorType = 'unknown';
       if (topic.contains('voltage')) {
         sensorType = 'voltage';
       } else if (topic.contains('temperature')) {
         sensorType = 'temperature';
+      } else if (topic.contains('battery/health')) {
+        // Battery health data from Raspberry Pi monitoring script
+        // Process comprehensive health data and emit individual sensor updates
+        final now = DateTime.now();
+
+        // Emit individual sensor data for dashboard compatibility
+        if (data['voltage'] != null) {
+          _emitSensor(
+            carId: carId,
+            type: 'voltage',
+            value: (data['voltage'] as num).toDouble(),
+            unit: 'V',
+            ts: now,
+            metadata: data,
+          );
+        }
+        if (data['soc'] != null) {
+          _emitSensor(
+            carId: carId,
+            type: 'battery',
+            value: (data['soc'] as num).toDouble(),
+            unit: '%',
+            ts: now,
+            metadata: data,
+          );
+        }
+
+        // Process battery health data through battery monitor service
+        if (onBatteryHealthReceived != null) {
+          onBatteryHealthReceived!(carId, data);
+        }
+
+        return;
       } else if (topic.contains('battery')) {
         sensorType = 'battery';
       } else if (topic.contains('alternator')) {
@@ -142,12 +193,41 @@ class MqttService {
     }
   }
 
+  void _emitSensor({
+    required String carId,
+    required String type,
+    required double value,
+    required String unit,
+    required DateTime ts,
+    Map<String, dynamic>? metadata,
+  }) {
+    if (_dataControllers.containsKey(carId)) {
+      _dataControllers[carId]!.add(
+        SensorData(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          carId: carId,
+          sensorType: type,
+          value: value,
+          unit: unit,
+          timestamp: ts,
+          metadata: metadata,
+        ),
+      );
+    }
+  }
+
   Stream<SensorData> getSensorDataStream(String carId) {
     if (!_dataControllers.containsKey(carId)) {
       _dataControllers[carId] = StreamController<SensorData>.broadcast();
-      
-      // For demo purposes, generate mock sensor data every 5 seconds
-      _startMockDataGeneration(carId);
+
+      if (AppConfig.useMockMqtt) {
+        // For demo purposes, generate mock sensor data every 5 seconds
+        _startMockDataGeneration(carId);
+      } else {
+        // Subscribe to real topics
+        // fire and forget
+        subscribeToCarSensors(carId);
+      }
     }
     return _dataControllers[carId]!.stream;
   }
@@ -163,11 +243,11 @@ class MqttService {
       final sensorTypes = ['voltage', 'temperature', 'battery', 'alternator'];
       final units = ['V', '°C', '%', 'A'];
       final baseValues = [12.0, 65.0, 85.0, 14.0];
-      
+
       for (int i = 0; i < sensorTypes.length; i++) {
         final variation = (DateTime.now().millisecond % 100 - 50) / 50.0;
         final value = baseValues[i] + variation * 2;
-        
+
         final sensorData = SensorData(
           id: DateTime.now().millisecondsSinceEpoch.toString() + '_$i',
           carId: carId,
@@ -182,7 +262,8 @@ class MqttService {
     });
   }
 
-  Future<void> sendCommand(String carId, String command, Map<String, dynamic> params) async {
+  Future<void> sendCommand(
+      String carId, String command, Map<String, dynamic> params) async {
     if (!_isConnected) return;
 
     final topic = 'car/$carId/commands';
@@ -198,6 +279,21 @@ class MqttService {
     _client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
   }
 
+  Future<void> sendPing(String carId) async {
+    if (!_isConnected) {
+      final connected = await connect();
+      if (!connected) return;
+    }
+    final topic = 'car/$carId/app/ping';
+    final payload = json.encode({
+      'msg': 'hello-from-app',
+      'ts': DateTime.now().toIso8601String(),
+    });
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(payload);
+    _client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+  }
+
   void _closeAllStreams() {
     for (final controller in _dataControllers.values) {
       controller.close();
@@ -206,4 +302,15 @@ class MqttService {
   }
 
   bool get isConnected => _isConnected;
+
+  Stream<MqttConnectionState> get connectionStateStream =>
+      _connectionController.stream;
+
+  void dispose() {
+    _closeAllStreams();
+    _connectionController.close();
+    if (_isConnected) {
+      _client.disconnect();
+    }
+  }
 }
